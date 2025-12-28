@@ -79,12 +79,3 @@ Notes:
 - `tsconfig.json` — TypeScript configuration
 
 ---
-
-## ✅ Notes & Contributing
-
-- There are no automated tests included yet (see `package.json`).
-- Contributions welcome — open an issue or submit a PR with changes.
-
----
-
-If you'd like, I can also add a simple client example or Dockerfile — tell me which you prefer. 💡
