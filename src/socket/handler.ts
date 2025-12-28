@@ -1,0 +1,100 @@
+import { Server, Socket } from "socket.io";
+import {
+  createRoom,
+  getRoom,
+  getWaitingPlayer,
+  resetRoom,
+  setWaitingPlayer,
+} from "../game/roomStore";
+import { Symbol } from "../types/room";
+import { checkWinner, isDraw } from "../game/logic";
+
+export const registerSocketHandlers = (io: Server, socket: Socket) => {
+  const waiting = getWaitingPlayer();
+
+  if (!waiting) {
+    setWaitingPlayer(socket.id);
+  } else {
+    const { roomId, room } = createRoom(waiting, socket.id);
+
+    io.to(waiting).socketsJoin(roomId);
+    socket.join(roomId);
+
+    io.to(waiting).emit("game_start", {
+      roomId,
+      board: [...room.board],
+      currentTurn: room.currentTurn,
+      mySymbol: "X" as Symbol,
+    });
+
+    io.to(socket.id).emit("game_start", {
+      roomId,
+      board: [...room.board],
+      currentTurn: room.currentTurn,
+      mySymbol: "O" as Symbol,
+    });
+    // Clear the waiting player
+    setWaitingPlayer(null);
+  }
+
+  interface MakeMoveData {
+    roomId: string;
+    index: number;
+    symbol: Symbol;
+  }
+
+  socket.on("make_move", ({ roomId, index, symbol }: MakeMoveData) => {
+    const room = getRoom(roomId);
+    if (!room) return;
+
+    // validate move
+    if (room.board[index] || room.currentTurn !== symbol) return;
+
+    // Valid move, update board
+    room.board[index] = symbol;
+    room.currentTurn = symbol === "X" ? "O" : "X";
+
+    const winner = checkWinner(room.board);
+    const draw = !winner && isDraw(room.board);
+
+    if (winner || draw) {
+      io.to(roomId).emit("game_over", {
+        board: [...room.board],
+        winner,
+        isDraw: draw,
+      });
+    } else {
+      io.to(roomId).emit("game_state", {
+        board: [...room.board],
+        currentTurn: room.currentTurn,
+      });
+    }
+  });
+
+  socket.on("reset_game", ({ roomId }: { roomId: string }) => {
+    const room = resetRoom(roomId);
+    if (!room) return;
+
+    const [p1, p2] = room.players;
+
+    io.to(p1).emit("game_start", {
+      roomId,
+      board: [...room.board],
+      currentTurn: room.currentTurn,
+      mySymbol: "X" as Symbol,
+    });
+
+    io.to(p2).emit("game_start", {
+      roomId,
+      board: [...room.board],
+      currentTurn: room.currentTurn,
+      mySymbol: "O" as Symbol,
+    });
+  });
+
+  socket.on("disconnect", () => {
+    if (getWaitingPlayer() === socket.id) {
+      setWaitingPlayer(null);
+    }
+  });
+};
